@@ -1,0 +1,76 @@
+version: '3.8'
+
+services:
+  scep:
+    build:
+      context: .
+      dockerfile: scep/Dockerfile
+    container_name: mdm-scep-server
+    environment:
+      - SCEP_CHALLENGE=nanomdm
+      - SCEP_PORT=8080
+      - SCEP_ALLOWRENEW=0
+      - SCEP_DEBUG=true
+    volumes:
+      - ./scep_data:/app/depot
+    networks:
+      - nanomdm
+      - proxy
+    restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.scep.rule=Host(`scep.mdm.golain.io`)"
+      - "traefik.http.routers.scep.entrypoints=websecure"
+      - "traefik.http.routers.scep.tls=true"
+      - "traefik.http.routers.scep.tls.certresolver=le"
+      - "traefik.http.services.scep.loadbalancer.server.port=8080"
+
+  # NanoMDM Server with PostgreSQL
+  nanomdm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: nanomdm-server
+    environment:
+      - NANOMDM_API_KEY=nanomdm
+      - NANOMDM_DEBUG=true
+      - NANOMDM_LISTEN=:9000
+    volumes:
+      - ./certs:/app/certs:ro
+    networks:
+      - nanomdm
+      - proxy
+    depends_on:
+      - postgres
+      - scep
+    restart: unless-stopped
+    command:
+      - "/app/nanomdm"
+      - "-ca"
+      - "/app/ca.pem"
+      - "-api"
+      - "nanomdm"
+      - "-debug"
+      - "-storage"
+      - "pgsql"
+      - "-storage-dsn"
+      - "postgres://nanomdm:postgres123@postgres:5432/nanomdm?sslmode=disable"
+      - "-webhook-url"
+      - "https://mdm.golain.io/webhook/mdm"
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nanomdm.rule=Host(`mdm.golain.io`)"
+      - "traefik.http.routers.nanomdm.entrypoints=websecure"
+      - "traefik.http.routers.nanomdm.tls=true"
+      - "traefik.http.routers.nanomdm.tls.certresolver=le"
+      - "traefik.http.services.nanomdm.loadbalancer.server.port=9000"
+
+volumes:
+  postgres_nanomdm_data:
+    driver: local
+
+networks:
+  nanomdm:
+    external: true
+  proxy:
+    external: true
