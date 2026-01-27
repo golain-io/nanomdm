@@ -1,2 +1,63 @@
-/nanomdm-*
-/nano2nano-*
+################################
+# Security – NEVER commit these
+################################
+
+# DEP Broker secrets
+dep_broker_data/
+certs/
+*.key
+*.pem
+*.p12
+*.pfx
+*.crt
+*.csr
+*.der
+
+# SCEP server state
+scep_data/
+scep/depot/
+scep/*.pem
+scep/*.key
+
+# CA & PKI
+ca.key
+ca.pem
+index.txt
+serial
+*.srl
+
+################################
+# Runtime data
+################################
+
+*.db
+*.sqlite
+*.sqlite3
+*.log
+*.pid
+
+################################
+# Docker & build output
+################################
+
+**/data/
+**/volumes/
+docker-compose.override.yml
+
+################################
+# Go build
+################################
+
+bin/
+dist/
+*.exe
+*.out
+
+################################
+# IDE & OS
+################################
+
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

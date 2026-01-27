@@ -48,18 +48,19 @@ func (w *MicroWebhook) Authenticate(r *mdm.Request, m *mdm.Authenticate) error {
 		CheckinEvent: &CheckinEvent{
 			UDID:         m.UDID,
 			EnrollmentID: m.EnrollmentID,
+			SerialNumber: m.SerialNumber,
 			RawPayload:   m.Raw,
 			Params:       r.Params,
 		},
 	}
 
 	if w.amqpClient != nil {
-		err := postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
-		if err != nil {
-			return err
-		}
+		return postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil
 }
 
 func (w *MicroWebhook) TokenUpdate(r *mdm.Request, m *mdm.TokenUpdate) error {
@@ -84,7 +85,10 @@ func (w *MicroWebhook) TokenUpdate(r *mdm.Request, m *mdm.TokenUpdate) error {
 	if w.amqpClient != nil {
 		return postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil
 }
 
 func (w *MicroWebhook) CheckOut(r *mdm.Request, m *mdm.CheckOut) error {
@@ -102,7 +106,10 @@ func (w *MicroWebhook) CheckOut(r *mdm.Request, m *mdm.CheckOut) error {
 	if w.amqpClient != nil {
 		return postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil
 }
 
 func (w *MicroWebhook) UserAuthenticate(r *mdm.Request, m *mdm.UserAuthenticate) ([]byte, error) {
@@ -118,12 +125,12 @@ func (w *MicroWebhook) UserAuthenticate(r *mdm.Request, m *mdm.UserAuthenticate)
 	}
 
 	if w.amqpClient != nil {
-		err := postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
-		if err != nil {
-			return nil, err
-		}
+		return nil, postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil, nil
 }
 
 func (w *MicroWebhook) SetBootstrapToken(r *mdm.Request, m *mdm.SetBootstrapToken) error {
@@ -140,10 +147,11 @@ func (w *MicroWebhook) SetBootstrapToken(r *mdm.Request, m *mdm.SetBootstrapToke
 
 	if w.amqpClient != nil {
 		return postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
-
 	}
-
-	return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil
 }
 
 func (w *MicroWebhook) GetBootstrapToken(r *mdm.Request, m *mdm.GetBootstrapToken) (*mdm.BootstrapToken, error) {
@@ -161,7 +169,10 @@ func (w *MicroWebhook) GetBootstrapToken(r *mdm.Request, m *mdm.GetBootstrapToke
 	if w.amqpClient != nil {
 		return nil, postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil, nil
 }
 
 func (w *MicroWebhook) CommandAndReportResults(r *mdm.Request, results *mdm.CommandResults) (*mdm.Command, error) {
@@ -180,7 +191,10 @@ func (w *MicroWebhook) CommandAndReportResults(r *mdm.Request, results *mdm.Comm
 	if w.amqpClient != nil {
 		return nil, postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil, nil
 }
 
 func (w *MicroWebhook) DeclarativeManagement(r *mdm.Request, m *mdm.DeclarativeManagement) ([]byte, error) {
@@ -198,7 +212,10 @@ func (w *MicroWebhook) DeclarativeManagement(r *mdm.Request, m *mdm.DeclarativeM
 	if w.amqpClient != nil {
 		return nil, postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil, nil
 }
 
 func (w *MicroWebhook) GetToken(r *mdm.Request, m *mdm.GetToken) (*mdm.GetTokenResponse, error) {
@@ -215,5 +232,8 @@ func (w *MicroWebhook) GetToken(r *mdm.Request, m *mdm.GetToken) (*mdm.GetTokenR
 	if w.amqpClient != nil {
 		return nil, postWebhookEventAMQP(w.amqpClient, w.exchange, w.routingKey, ev)
 	}
-	return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	if w.url != "" {
+		return nil, postWebhookEvent(r.Context(), w.client, w.url, ev)
+	}
+	return nil, nil
 }

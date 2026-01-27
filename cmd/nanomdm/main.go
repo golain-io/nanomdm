@@ -194,6 +194,7 @@ func main() {
 			if err != nil {
 				stdlog.Fatal(err)
 			}
+			logger.Info("msg", "AMQP client initialized and connected to RabbitMQ")
 
 			webhookService := microwebhook.New(*flWebhook, mdmStorage,
 				microwebhook.WithAMQPClient(AMQPExchange, AMQPRoutingKey, amqpClient))

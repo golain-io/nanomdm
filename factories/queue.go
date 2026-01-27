@@ -26,6 +26,7 @@ type QueueFactory struct {
 	rxChannels sync.Map
 
 	amqpConnectionString string
+	tlsConfig            *tls.Config
 }
 
 type consumer struct {
@@ -85,40 +86,66 @@ func WithTLSConfig(clientCertPath, clientKeyPath, caCertPath string) func(*Queue
 			panic(err)
 		}
 
+		// Try to get system cert pool, but create a new one if it fails (e.g., in Docker)
 		certPool, err := x509.SystemCertPool()
-		if err != nil {
-			panic(err)
+		if err != nil || certPool == nil {
+			certPool = x509.NewCertPool()
 		}
 
 		rootcert, err := os.ReadFile(caCertPath)
 		if err != nil {
 			panic(err)
 		}
-		certPool.AppendCertsFromPEM(rootcert)
+		if !certPool.AppendCertsFromPEM(rootcert) {
+			panic(fmt.Errorf("failed to append CA certificate from %s", caCertPath))
+		}
 
-		tlsConfig := new(tls.Config)
-		tlsConfig.Certificates = []tls.Certificate{cert}
-		tlsConfig.RootCAs = certPool
+		tlsConfig := &tls.Config{
+			Certificates: []tls.Certificate{cert},
+			RootCAs:      certPool,
+		}
 
+		qf.tlsConfig = tlsConfig
 		qf.amqpConnectionString = strings.Replace(qf.amqpConnectionString, "amqp://", "amqps://", 1)
 
 	}
 }
 
 func (QF *QueueFactory) newAMQPConnection(amqpConnString string, tlsConfig *tls.Config) error {
-	otelzap.L().Sugar().Debugf("connecting to: %v", amqpConnString)
-	if tlsConfig == nil {
+	// Use stored TLS config if available, otherwise use the parameter
+	configToUse := QF.tlsConfig
+	if configToUse == nil {
+		configToUse = tlsConfig
+	}
+	
+	// Log connection attempt
+	if configToUse != nil || strings.HasPrefix(amqpConnString, "amqps://") {
+		otelzap.L().Sugar().Infof("connecting to AMQP server with TLS: %v", amqpConnString)
+	} else {
+		otelzap.L().Sugar().Infof("connecting to AMQP server: %v", amqpConnString)
+	}
+	
+	// Check if connection string is amqps:// or if TLS config is provided
+	if configToUse == nil && !strings.HasPrefix(amqpConnString, "amqps://") {
 		amqpConnection, err := amqp.Dial(amqpConnString)
 		if err != nil {
 			return fmt.Errorf("unable to establish amqp connection: %v", err)
 		}
 		QF.amqpConn = amqpConnection
+		otelzap.L().Sugar().Info("successfully connected to AMQP server (plain connection)")
 		return nil
 	}
-	amqpConnection, err := amqp.DialTLS(amqpConnString, tlsConfig)
+	
+	// Use TLS connection
+	if configToUse == nil {
+		// If amqps:// but no TLS config, create a default one
+		configToUse = &tls.Config{}
+	}
+	amqpConnection, err := amqp.DialTLS(amqpConnString, configToUse)
 	if err != nil {
 		return fmt.Errorf("unable to establish amqp connection: %v", err)
 	}
+	otelzap.L().Sugar().Info("successfully connected to AMQP server (TLS connection)")
 	errChan := amqpConnection.NotifyClose(make(chan *amqp.Error))
 	go func() {
 		err, open := <-errChan
@@ -128,7 +155,7 @@ func (QF *QueueFactory) newAMQPConnection(amqpConnString string, tlsConfig *tls.
 		otelzap.L().Sugar().Warn("amqp connection closed, attempting to reconnect")
 		if !open {
 			// attempt to reconnect
-			err := QF.newAMQPConnection(amqpConnString, tlsConfig)
+			err := QF.newAMQPConnection(amqpConnString, QF.tlsConfig)
 			if err != nil {
 				otelzap.L().Sugar().Errorf("unable to reconnect to amqp: %v", err)
 				return

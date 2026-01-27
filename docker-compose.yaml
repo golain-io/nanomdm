@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  # PostgreSQL Database
+  postgres:
+    image: postgres:14-alpine
+    container_name: nanomdm-postgres
+    environment:
+      POSTGRES_DB: nanomdm
+      POSTGRES_USER: nanomdm
+      POSTGRES_PASSWORD: postgres123
+      POSTGRES_HOST_AUTH_METHOD: trust
+    command: -c ssl=off
+    volumes:
+      - postgres_nanomdm_data:/var/lib/postgresql/data
+      - ./storage/pgsql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
+    ports:
+      - "5433:5432"
+    networks:
+      - nanomdm
+    restart: unless-stopped
+
   scep:
     build:
       context: .
@@ -29,7 +48,10 @@ services:
   nanomdm:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: Dockerfile.buildx
+      args:
+        TARGETOS: linux
+        TARGETARCH: amd64
     container_name: nanomdm-server
     environment:
       - NANOMDM_API_KEY=nanomdm
@@ -56,13 +78,13 @@ services:
       - "-storage-dsn"
       - "postgres://nanomdm:postgres123@postgres:5432/nanomdm?sslmode=disable"
       - "-amqps-conn"
-      - "amqps://nanomdm:postgres123@rabbitmq:5671"
+      - "amqps://rabbitmq:ef19e2ji@94.136.187.98:5671"
       - "-amqps-ca-cert"
-      - "/app/ca.pem"
+      - "/app/certs/internalcacert.pem"
       - "-amqps-client-cert"
-      - "/app/client.pem"
+      - "/app/certs/dev.queue.pem"
       - "-amqps-client-key"
-      - "/app/client.key"
+      - "/app/certs/dev.queue.key"
     labels:
       - "traefik.enable=true"
       - "traefik.http.routers.nanomdm.rule=Host(`mdm.golain.io`)"
@@ -70,6 +92,29 @@ services:
       - "traefik.http.routers.nanomdm.tls=true"
       - "traefik.http.routers.nanomdm.tls.certresolver=le"
       - "traefik.http.services.nanomdm.loadbalancer.server.port=9000"
+
+  dep-broker:
+    build:
+      context: .
+      dockerfile: Dockerfile.dep-broker
+    container_name: dep-broker
+    environment:
+      - DEP_BROKER_LISTEN=:9010
+      - DEP_BROKER_STORAGE=/app/dep_broker_data
+    volumes:
+      - ./dep_broker_data:/app/dep_broker_data
+    networks:
+      - nanomdm
+      - proxy
+    restart: unless-stopped
+    command: []
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.depbroker.rule=Host(`dep.mdm.golain.io`)"
+      - "traefik.http.routers.depbroker.entrypoints=websecure"
+      - "traefik.http.routers.depbroker.tls=true"
+      - "traefik.http.routers.depbroker.tls.certresolver=le"
+      - "traefik.http.services.depbroker.loadbalancer.server.port=9010"
 
 volumes:
   postgres_nanomdm_data:

@@ -25,6 +25,8 @@ CREATE TABLE devices
     bootstrap_token_b64 TEXT         NULL,
     bootstrap_token_at  TIMESTAMP    NULL,
 
+    backend_device_id   VARCHAR(255) NULL,
+
     created_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP DEFAULT CURRENT_TIMESTAMP, -- trigger
 
@@ -35,9 +37,11 @@ CREATE TABLE devices
     CHECK (unlock_token IS NULL OR LENGTH(unlock_token) > 0),
     CHECK (authenticate != ''),
     CHECK (token_update IS NULL OR token_update != ''),
-    CHECK (bootstrap_token_b64 IS NULL OR bootstrap_token_b64 != '')
+    CHECK (bootstrap_token_b64 IS NULL OR bootstrap_token_b64 != ''),
+    CHECK (backend_device_id IS NULL OR backend_device_id != '')
 );
 CREATE INDEX serial_number ON devices (serial_number);
+CREATE INDEX backend_device_id ON devices (backend_device_id);
 
 CREATE TABLE users
 (

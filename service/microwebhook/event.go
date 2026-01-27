@@ -23,6 +23,7 @@ type AcknowledgeEvent struct {
 type CheckinEvent struct {
 	UDID         string            `json:"udid,omitempty"`
 	EnrollmentID string            `json:"enrollment_id,omitempty"`
+	SerialNumber string            `json:"serial_number,omitempty"`
 	Params       map[string]string `json:"url_params"`
 	RawPayload   []byte            `json:"raw_payload"`
 

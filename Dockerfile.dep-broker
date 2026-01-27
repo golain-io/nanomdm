@@ -1,0 +1,20 @@
+FROM golang:1.22 as build
+
+WORKDIR /src
+
+# Preload modules
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Build dep-broker
+COPY . .
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
+    go build -tags netgo -ldflags "-s -w" -o /out/dep-broker ./cmd/dep-broker
+
+FROM gcr.io/distroless/static
+WORKDIR /app
+COPY --from=build /out/dep-broker /app/dep-broker
+EXPOSE 9010
+ENTRYPOINT ["/app/dep-broker"]
+
+
