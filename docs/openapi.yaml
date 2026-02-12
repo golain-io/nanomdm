@@ -3,6 +3,49 @@ info:
   version: 0.1.0
   title: NanoMDM API
 paths:
+  /v1/devices:
+    get:
+      description: List enrolled devices (basic metadata). DeviceInformation details are available per-device via /v1/devices/{id}.
+      security:
+        - basicAuth: []
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeviceInfo'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '500':
+          description: Error retrieving devices
+  /v1/devices/{id}:
+    get:
+      description: Retrieve a device by enrollment ID, including parsed DeviceInformation metadata when available.
+      security:
+        - basicAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: Enrollment ID of the device (NanoMDM enrollment identifier).
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceInfo'
+        '401':
+          $ref: '#/components/responses/UnauthorizedError'
+        '404':
+          description: Device not found
+        '500':
+          description: Error retrieving device
   /v1/pushcert:
     put:
       description: Upload APNs certificate and private key.
@@ -171,6 +214,44 @@ components:
           schema:
             $ref: '#/components/schemas/APIResult'
   schemas:
+    DeviceInfo:
+      type: object
+      properties:
+        id:
+          type: string
+        serial_number:
+          type: string
+        type:
+          type: string
+        enabled:
+          type: boolean
+        last_seen:
+          type: string
+        authenticated_at:
+          type: string
+        token_update_tally:
+          type: integer
+        topic:
+          type: string
+        backend_device_id:
+          type: string
+        hardware_info:
+          type: object
+          additionalProperties: true
+        network_info:
+          type: object
+          additionalProperties: true
+        storage_info:
+          type: object
+          additionalProperties: true
+        power_info:
+          type: object
+          additionalProperties: true
+        management_info:
+          type: object
+          additionalProperties: true
+        last_device_query:
+          type: string
     APIResult:
       type: object
       description: foo

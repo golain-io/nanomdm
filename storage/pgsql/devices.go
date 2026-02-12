@@ -4,16 +4,24 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"time"
 	"regexp"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/micromdm/nanomdm/storage"
 )
 
-// RetrieveDeviceInfo returns device information for a given enrollment ID
+func isUndefinedColumnBackendDeviceID(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := strings.ToLower(err.Error())
+	return strings.Contains(msg, "backend_device_id") && strings.Contains(msg, "does not exist")
+}
+
 func (s *PgSQLStorage) RetrieveDeviceInfo(ctx context.Context, id string) (*storage.DeviceInfo, error) {
-	query := `
+	queryWithBackendDeviceID := `
 		SELECT 
 			e.id,
 			d.serial_number,
@@ -29,12 +37,28 @@ func (s *PgSQLStorage) RetrieveDeviceInfo(ctx context.Context, id string) (*stor
 		WHERE e.id = $1
 		LIMIT 1
 	`
+	queryNoBackendDeviceID := `
+		SELECT 
+			e.id,
+			d.serial_number,
+			e.type,
+			e.enabled,
+			e.last_seen_at,
+			d.authenticate_at,
+			e.token_update_tally,
+			e.topic
+		FROM enrollments e
+		LEFT JOIN devices d ON e.device_id = d.id
+		WHERE e.id = $1
+		LIMIT 1
+	`
 	
 	var device storage.DeviceInfo
 	var lastSeen, authenticatedAt sql.NullTime
 	var backendDeviceID sql.NullString
 	
-	err := s.db.QueryRowContext(ctx, query, id).Scan(
+	// Try query that includes backend_device_id first, but fall back for older schemas.
+	err := s.db.QueryRowContext(ctx, queryWithBackendDeviceID, id).Scan(
 		&device.ID,
 		&device.SerialNumber,
 		&device.Type,
@@ -45,6 +69,19 @@ func (s *PgSQLStorage) RetrieveDeviceInfo(ctx context.Context, id string) (*stor
 		&device.Topic,
 		&backendDeviceID,
 	)
+	if isUndefinedColumnBackendDeviceID(err) {
+		backendDeviceID = sql.NullString{}
+		err = s.db.QueryRowContext(ctx, queryNoBackendDeviceID, id).Scan(
+			&device.ID,
+			&device.SerialNumber,
+			&device.Type,
+			&device.Enabled,
+			&lastSeen,
+			&authenticatedAt,
+			&device.TokenUpdateTally,
+			&device.Topic,
+		)
+	}
 	
 	if err != nil {
 		if err == sql.ErrNoRows {
@@ -104,7 +141,7 @@ func (s *PgSQLStorage) RetrieveDeviceInfo(ctx context.Context, id string) (*stor
 
 // RetrieveAllDevices returns a list of all enrolled devices
 func (s *PgSQLStorage) RetrieveAllDevices(ctx context.Context) ([]*storage.DeviceInfo, error) {
-	query := `
+	queryWithBackendDeviceID := `
 		SELECT 
 			e.id,
 			d.serial_number,
@@ -119,8 +156,25 @@ func (s *PgSQLStorage) RetrieveAllDevices(ctx context.Context) ([]*storage.Devic
 		LEFT JOIN devices d ON e.device_id = d.id
 		ORDER BY e.last_seen_at DESC
 	`
+	queryNoBackendDeviceID := `
+		SELECT 
+			e.id,
+			d.serial_number,
+			e.type,
+			e.enabled,
+			e.last_seen_at,
+			d.authenticate_at,
+			e.token_update_tally,
+			e.topic
+		FROM enrollments e
+		LEFT JOIN devices d ON e.device_id = d.id
+		ORDER BY e.last_seen_at DESC
+	`
 	
-	rows, err := s.db.QueryContext(ctx, query)
+	rows, err := s.db.QueryContext(ctx, queryWithBackendDeviceID)
+	if isUndefinedColumnBackendDeviceID(err) {
+		rows, err = s.db.QueryContext(ctx, queryNoBackendDeviceID)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("querying all devices: %w", err)
 	}
@@ -144,6 +198,19 @@ func (s *PgSQLStorage) RetrieveAllDevices(ctx context.Context) ([]*storage.Devic
 			&device.Topic,
 			&backendDeviceID,
 		)
+		if isUndefinedColumnBackendDeviceID(err) {
+			backendDeviceID = sql.NullString{}
+			err = rows.Scan(
+				&device.ID,
+				&device.SerialNumber,
+				&device.Type,
+				&device.Enabled,
+				&lastSeen,
+				&authenticatedAt,
+				&device.TokenUpdateTally,
+				&device.Topic,
+			)
+		}
 		
 		if err != nil {
 			return nil, fmt.Errorf("scanning device row: %w", err)

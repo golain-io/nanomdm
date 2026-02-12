@@ -14,6 +14,8 @@ const (
 	APIEndpointPushCert = "/pushcert"
 	APIEndpointPush     = "/push/"    // note trailing slash
 	APIEndpointEnqueue  = "/enqueue/" // note trailing slash
+	APIEndpointDevices  = "/devices"
+	APIEndpointDevice   = "/devices/" // note trailing slash
 )
 
 // Mux can register HTTP handlers.
@@ -28,6 +30,7 @@ type Mux interface {
 type APIStorage interface {
 	storage.PushCertStore
 	storage.CommandEnqueuer
+	storage.DeviceInfoStore
 }
 
 func handlerName(endpoint string) string {
@@ -74,6 +77,27 @@ func HandleAPIv1(prefix string, mux Mux, logger log.Logger, store APIStorage, pu
 				store,
 				pusher,
 				logger.With("handler", handlerName(APIEndpointEnqueue)),
+			),
+		),
+	)
+
+	// register API handler for listing devices
+	mux.Handle(
+		prefix+APIEndpointDevices,
+		DevicesHandler(
+			store,
+			logger.With("handler", handlerName(APIEndpointDevices)),
+		),
+	)
+
+	// register API handler for retrieving a device by enrollment ID
+	mux.Handle(
+		prefix+APIEndpointDevice,
+		http.StripPrefix( // we strip the prefix to use the path as an id
+			prefix+APIEndpointDevice,
+			DeviceHandler(
+				store,
+				logger.With("handler", handlerName(APIEndpointDevice)),
 			),
 		),
 	)

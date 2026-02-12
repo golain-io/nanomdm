@@ -1,0 +1,12 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install pika for RabbitMQ
+RUN pip install --no-cache-dir pika
+
+# Copy test script and certificates
+COPY test-rabbitmq.py /app/
+COPY certs/ /app/certs/
+
+CMD ["python3", "/app/test-rabbitmq.py"]

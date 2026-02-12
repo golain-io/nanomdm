@@ -23,6 +23,16 @@ import (
 	"github.com/micromdm/nanolib/log/ctxlog"
 )
 
+func writeJSON(logger log.Logger, w http.ResponseWriter, header int, v interface{}) {
+	w.Header().Set("Content-type", "application/json")
+	w.WriteHeader(header)
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "\t")
+	if err := enc.Encode(v); err != nil && logger != nil {
+		logger.Info("msg", "encoding json", "err", err)
+	}
+}
+
 // writeAPIResult encodes r to JSON to w, logging errors to logger if necessary.
 func writeAPIResult(logger log.Logger, w http.ResponseWriter, r *api.APIResult, header int) {
 	if header < 1 {
@@ -211,6 +221,74 @@ func RawCommandEnqueueToIDsHandler(enqueuer storage.CommandEnqueuer, pusher push
 			}
 			logger.Info(logs...)
 		}
+	}
+}
+
+// DevicesHandler returns a list of devices (enrollments) with basic metadata.
+// This requires a storage backend that implements storage.DeviceInfoStore.
+func DevicesHandler(store storage.DeviceInfoStore, logger log.Logger) http.HandlerFunc {
+	if store == nil {
+		panic("nil store")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger := ctxlog.Logger(r.Context(), logger)
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		if r.URL.Path != "" && r.URL.Path != "/" {
+			// Avoid ambiguity with /devices/<id> if a proxy/path is misconfigured
+			http.NotFound(w, r)
+			return
+		}
+		devices, err := store.RetrieveAllDevices(r.Context())
+		if err != nil {
+			logger.Info("msg", "retrieve all devices", "err", err)
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(logger, w, http.StatusOK, devices)
+	}
+}
+
+// DeviceHandler returns a device by enrollment ID with parsed DeviceInformation metadata when available.
+// The enrollment ID is taken from the URL path (after stripping the /v1/devices/ prefix).
+func DeviceHandler(store storage.DeviceInfoStore, logger log.Logger) http.HandlerFunc {
+	if store == nil {
+		panic("nil store")
+	}
+	return func(w http.ResponseWriter, r *http.Request) {
+		logger := ctxlog.Logger(r.Context(), logger)
+		if r.Method != http.MethodGet {
+			http.Error(w, http.StatusText(http.StatusMethodNotAllowed), http.StatusMethodNotAllowed)
+			return
+		}
+		id := strings.TrimPrefix(r.URL.Path, "/")
+		if id == "" {
+			http.Error(w, "missing device id", http.StatusBadRequest)
+			return
+		}
+		// Disallow extra path segments.
+		if strings.Contains(id, "/") {
+			http.NotFound(w, r)
+			return
+		}
+		info, err := store.RetrieveDeviceInfo(r.Context(), id)
+		if err != nil {
+			logger.Info("msg", "retrieve device info", "id", id, "err", err)
+			// Some backends explicitly do not support this.
+			if strings.Contains(strings.ToLower(err.Error()), "not supported") {
+				http.Error(w, err.Error(), http.StatusNotImplemented)
+				return
+			}
+			http.Error(w, http.StatusText(http.StatusInternalServerError), http.StatusInternalServerError)
+			return
+		}
+		if info == nil {
+			http.NotFound(w, r)
+			return
+		}
+		writeJSON(logger, w, http.StatusOK, info)
 	}
 }
 

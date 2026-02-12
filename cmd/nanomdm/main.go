@@ -181,13 +181,18 @@ func main() {
 			var options []func(*factories.QueueFactory)
 
 			// Configure TLS if certificates are provided
-			if *flAMQPScaCert != "" || *flAMQPSclientCert != "" || *flAMQPSclientKey != "" {
-				// Validate that all required TLS parameters are provided
-				if *flAMQPScaCert == "" || *flAMQPSclientCert == "" || *flAMQPSclientKey == "" {
-					stdlog.Fatal("amqps-ca-cert, amqps-client-cert, and amqps-client-key must all be provided for TLS configuration")
+			// Support CA-only (server verification) or full mTLS (client certs)
+			if *flAMQPScaCert != "" {
+				if *flAMQPSclientCert != "" && *flAMQPSclientKey != "" {
+					// Full mTLS with client certificates
+					options = append(options, factories.WithTLSConfig(*flAMQPSclientCert, *flAMQPSclientKey, *flAMQPScaCert))
+				} else {
+					// CA-only for server verification
+					options = append(options, factories.WithTLSConfigCAOnly(*flAMQPScaCert))
 				}
-
-				options = append(options, factories.WithTLSConfig(*flAMQPSclientCert, *flAMQPSclientKey, *flAMQPScaCert))
+			} else if *flAMQPSclientCert != "" || *flAMQPSclientKey != "" {
+				// Client certs provided but no CA cert - invalid
+				stdlog.Fatal("amqps-ca-cert must be provided when using client certificates")
 			}
 
 			amqpClient, err := factories.NewQueueInstanceFromConnectionString(*flAMQPSConn, nil, options...)

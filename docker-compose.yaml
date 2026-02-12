@@ -1,44 +1,24 @@
-version: '3.8'
-
 services:
-  # PostgreSQL Database
-  postgres:
-    image: postgres:14-alpine
-    container_name: nanomdm-postgres
-    environment:
-      POSTGRES_DB: nanomdm
-      POSTGRES_USER: nanomdm
-      POSTGRES_PASSWORD: postgres123
-      POSTGRES_HOST_AUTH_METHOD: trust
-    command: -c ssl=off
-    volumes:
-      - postgres_nanomdm_data:/var/lib/postgresql/data
-      - ./storage/pgsql/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql
-    ports:
-      - "5433:5432"
-    networks:
-      - nanomdm
-    restart: unless-stopped
-
   scep:
     build:
       context: .
       dockerfile: scep/Dockerfile
-    container_name: mdm-scep-server
+    container_name: nanomdm-scep
+    volumes:
+      - ./scep/depot:/app/depot
     environment:
       - SCEP_CHALLENGE=nanomdm
       - SCEP_PORT=8080
       - SCEP_ALLOWRENEW=0
       - SCEP_DEBUG=true
-    volumes:
-      - ./scep_data:/app/depot
+      - SCEP_CERT_RENEW=0
     networks:
       - nanomdm
       - proxy
     restart: unless-stopped
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.scep.rule=Host(`scep.mdm.golain.io`)"
+      - "traefik.http.routers.scep.rule=Host(`scep.golain.io`)"
       - "traefik.http.routers.scep.entrypoints=websecure"
       - "traefik.http.routers.scep.tls=true"
       - "traefik.http.routers.scep.tls.certresolver=le"
@@ -48,13 +28,9 @@ services:
   nanomdm:
     build:
       context: .
-      dockerfile: Dockerfile.buildx
-      args:
-        TARGETOS: linux
-        TARGETARCH: amd64
+      dockerfile: Dockerfile
     container_name: nanomdm-server
     environment:
-      - NANOMDM_API_KEY=nanomdm
       - NANOMDM_DEBUG=true
       - NANOMDM_LISTEN=:9000
     volumes:
@@ -62,8 +38,8 @@ services:
     networks:
       - nanomdm
       - proxy
+      - queue
     depends_on:
-      - postgres
       - scep
     restart: unless-stopped
     command:
@@ -71,23 +47,24 @@ services:
       - "-ca"
       - "/app/ca.pem"
       - "-api"
-      - "nanomdm"
+      - "QdYgcU2n0dsXN55Yt53gZnUe"
       - "-debug"
       - "-storage"
       - "pgsql"
       - "-storage-dsn"
-      - "postgres://nanomdm:postgres123@postgres:5432/nanomdm?sslmode=disable"
+      - "postgres://nanomdm:OWFG6kDT5eSfEi2csaZOlAhE@golain-prod-alpha-db.couz0urd95oe.ap-south-1.rds.amazonaws.com:5432/nanomdm?sslmode=require"
       - "-amqps-conn"
-      - "amqps://rabbitmq:ef19e2ji@94.136.187.98:5671"
+      - "amqps://rabbitmq:ef19e2ji@queue:5671/"
       - "-amqps-ca-cert"
-      - "/app/certs/internalcacert.pem"
+      - "/app/certs/rabbitmq-ca.pem"
       - "-amqps-client-cert"
-      - "/app/certs/dev.queue.pem"
+      - "/app/certs/rabbitmq-client.pem"
       - "-amqps-client-key"
-      - "/app/certs/dev.queue.key"
+      - "/app/certs/rabbitmq-client.key"
+
     labels:
       - "traefik.enable=true"
-      - "traefik.http.routers.nanomdm.rule=Host(`mdm.golain.io`)"
+      - "traefik.http.routers.nanomdm.rule=Host(`nanomdm.golain.io`)"
       - "traefik.http.routers.nanomdm.entrypoints=websecure"
       - "traefik.http.routers.nanomdm.tls=true"
       - "traefik.http.routers.nanomdm.tls.certresolver=le"
@@ -124,4 +101,6 @@ networks:
   nanomdm:
     external: true
   proxy:
+    external: true
+  queue:
     external: true

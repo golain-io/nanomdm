@@ -55,7 +55,12 @@ func NewQueueInstance(user, pass, host, port string, tlsConfig *tls.Config, opti
 	for _, option := range options {
 		option(queueInstance)
 	}
-	err := queueInstance.newAMQPConnection(queueInstance.amqpConnectionString, tlsConfig)
+	// Use TLS config from options if set, otherwise use provided parameter
+	useTLSConfig := queueInstance.tlsConfig
+	if useTLSConfig == nil {
+		useTLSConfig = tlsConfig
+	}
+	err := queueInstance.newAMQPConnection(queueInstance.amqpConnectionString, useTLSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create amqp connection: %v", err)
 	}
@@ -71,12 +76,39 @@ func NewQueueInstanceFromConnectionString(connectionString string, tlsConfig *tl
 	for _, option := range options {
 		option(queueInstance)
 	}
-	err := queueInstance.newAMQPConnection(queueInstance.amqpConnectionString, tlsConfig)
+	// Use TLS config from options if set, otherwise use provided parameter
+	useTLSConfig := queueInstance.tlsConfig
+	if useTLSConfig == nil {
+		useTLSConfig = tlsConfig
+	}
+	err := queueInstance.newAMQPConnection(queueInstance.amqpConnectionString, useTLSConfig)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create amqp connection: %v", err)
 	}
 
 	return queueInstance, nil
+}
+
+// WithTLSConfigCAOnly configures TLS with only CA certificate for server verification
+func WithTLSConfigCAOnly(caCertPath string) func(*QueueFactory) {
+	return func(qf *QueueFactory) {
+		certPool, err := x509.SystemCertPool()
+		if err != nil {
+			panic(err)
+		}
+
+		rootcert, err := os.ReadFile(caCertPath)
+		if err != nil {
+			panic(err)
+		}
+		certPool.AppendCertsFromPEM(rootcert)
+
+		tlsConfig := new(tls.Config)
+		tlsConfig.RootCAs = certPool
+
+		qf.tlsConfig = tlsConfig
+		qf.amqpConnectionString = strings.Replace(qf.amqpConnectionString, "amqp://", "amqps://", 1)
+	}
 }
 
 func WithTLSConfig(clientCertPath, clientKeyPath, caCertPath string) func(*QueueFactory) {
@@ -107,7 +139,6 @@ func WithTLSConfig(clientCertPath, clientKeyPath, caCertPath string) func(*Queue
 
 		qf.tlsConfig = tlsConfig
 		qf.amqpConnectionString = strings.Replace(qf.amqpConnectionString, "amqp://", "amqps://", 1)
-
 	}
 }
 
