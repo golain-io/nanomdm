@@ -1,5 +1,9 @@
+# ARM64: platform is set to linux/arm64 below. On an ARM64 host run:
+#   docker compose build && docker compose up -d
+# For amd64, remove the "platform: linux/arm64" line from each service.
 services:
   scep:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: scep/Dockerfile
@@ -26,6 +30,7 @@ services:
 
   # NanoMDM Server with PostgreSQL
   nanomdm:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: Dockerfile
@@ -71,6 +76,7 @@ services:
       - "traefik.http.services.nanomdm.loadbalancer.server.port=9000"
 
   dep-broker:
+    platform: linux/arm64
     build:
       context: .
       dockerfile: Dockerfile.dep-broker

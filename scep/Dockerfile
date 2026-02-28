@@ -1,28 +1,17 @@
-FROM alpine:3.18
-
-RUN apk add --no-cache \
-    ca-certificates \
-    wget \
-    && rm -rf /var/cache/apk/*
-
-WORKDIR /app
-
+# Build SCEP server from source (supports amd64 and arm64; no linux-arm64 pre-built release)
+FROM golang:1.22-alpine AS builder
+ARG TARGETARCH=amd64
 ARG SCEP_VERSION=v2.3.0
-ARG SCEP_ARCH=linux-amd64
+RUN apk add --no-cache git
+WORKDIR /src
+RUN git clone --depth 1 --branch ${SCEP_VERSION} https://github.com/micromdm/scep.git . \
+    && CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -o /out/scepserver ./cmd/scepserver
 
-RUN apk add --no-cache unzip curl
-
-RUN curl -RLO https://github.com/micromdm/scep/releases/download/${SCEP_VERSION}/scepserver-${SCEP_ARCH}-${SCEP_VERSION}.zip \
-    && unzip scepserver-${SCEP_ARCH}-${SCEP_VERSION}.zip \
-    && chmod +x scepserver-${SCEP_ARCH} \
-    && mkdir -p /app/depot
-    # && ./scepserver-${SCEP_ARCH} ca -init \
-    # && pwd \
-    # && ls -la
-
-RUN ls -la /app/depot
-
+FROM alpine:3.18
+RUN apk add --no-cache ca-certificates && rm -rf /var/cache/apk/*
+WORKDIR /app
+COPY --from=builder /out/scepserver /app/scepserver
+RUN chmod +x /app/scepserver && mkdir -p /app/depot
 EXPOSE 8080
-
-ENTRYPOINT ["/app/scepserver-linux-amd64"]
-CMD ["-allowrenew", "0", "-challenge", "nanomdm", "-debug", "-port", "8080", "-depot", "/app/depot" ]
+ENTRYPOINT ["/app/scepserver"]
+CMD ["-allowrenew", "0", "-challenge", "nanomdm", "-debug", "-port", "8080", "-depot", "/app/depot"]
