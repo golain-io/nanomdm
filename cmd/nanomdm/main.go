@@ -73,6 +73,7 @@ func main() {
 		flCertHeader      = flag.String("cert-header", "", "HTTP header containing TLS client certificate")
 		flDebug           = flag.Bool("debug", false, "log debug messages")
 		flDump            = flag.Bool("dump", false, "dump MDM requests and responses to stdout")
+		flAutoDeviceInfo  = flag.Bool("auto-device-info", false, "automatically enqueue DeviceInformation after TokenUpdate (best-effort)")
 		flDisableMDM      = flag.Bool("disable-mdm", false, "disable MDM HTTP endpoint")
 		flCheckin         = flag.Bool("checkin", false, "enable separate HTTP endpoint for MDM check-ins")
 		flMigration       = flag.Bool("migration", false, "enable HTTP endpoint for enrollment migrations")
@@ -129,6 +130,11 @@ func main() {
 		nanomdm.WithUserAuthenticate(nanomdm.NewUAService(mdmStorage, *flUAZLChal)),
 		nanomdm.WithGetToken(tokenMux),
 		nanomdm.WithLogger(logger.With("service", "nanomdm")),
+	}
+	if *flAutoDeviceInfo {
+		pushProviderFactory := nanopush.NewFactory()
+		pushService := pushsvc.New(mdmStorage, mdmStorage, pushProviderFactory, logger.With("service", "push"))
+		nanoOpts = append(nanoOpts, nanomdm.WithAutoDeviceInformation(mdmStorage, pushService, mdmStorage))
 	}
 	if *flDMURLPfx != "" {
 		var warningText string

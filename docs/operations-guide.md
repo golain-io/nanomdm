@@ -150,6 +150,12 @@ For example to use both a `filekv` *and* `mysql` backend your command line might
 
 Dump MDM request bodies (i.e. complete Plist requests) to standard output for each request.
 
+### -auto-device-info
+
+* automatically enqueue `DeviceInformation` after `TokenUpdate`
+
+When enabled, NanoMDM will automatically enqueue a `DeviceInformation` command for a device-channel enrollment immediately after it receives a `TokenUpdate`, if there is no previously stored `DeviceInformation` response for that enrollment. This is best-effort; failures are logged but do not fail enrollment.
+
 ### -listen string
 
 * HTTP listen address (default ":9000")

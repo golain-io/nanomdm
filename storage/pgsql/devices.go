@@ -172,7 +172,9 @@ func (s *PgSQLStorage) RetrieveAllDevices(ctx context.Context) ([]*storage.Devic
 	`
 	
 	rows, err := s.db.QueryContext(ctx, queryWithBackendDeviceID)
+	hasBackendDeviceID := true
 	if isUndefinedColumnBackendDeviceID(err) {
+		hasBackendDeviceID = false
 		rows, err = s.db.QueryContext(ctx, queryNoBackendDeviceID)
 	}
 	if err != nil {
@@ -187,19 +189,19 @@ func (s *PgSQLStorage) RetrieveAllDevices(ctx context.Context) ([]*storage.Devic
 		var lastSeen, authenticatedAt sql.NullTime
 		var backendDeviceID sql.NullString
 		
-		err := rows.Scan(
-			&device.ID,
-			&device.SerialNumber,
-			&device.Type,
-			&device.Enabled,
-			&lastSeen,
-			&authenticatedAt,
-			&device.TokenUpdateTally,
-			&device.Topic,
-			&backendDeviceID,
-		)
-		if isUndefinedColumnBackendDeviceID(err) {
-			backendDeviceID = sql.NullString{}
+		if hasBackendDeviceID {
+			err = rows.Scan(
+				&device.ID,
+				&device.SerialNumber,
+				&device.Type,
+				&device.Enabled,
+				&lastSeen,
+				&authenticatedAt,
+				&device.TokenUpdateTally,
+				&device.Topic,
+				&backendDeviceID,
+			)
+		} else {
 			err = rows.Scan(
 				&device.ID,
 				&device.SerialNumber,

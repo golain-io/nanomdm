@@ -2,16 +2,27 @@
 package nanomdm
 
 import (
+	"bytes"
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 
 	"github.com/micromdm/nanomdm/mdm"
+	"github.com/micromdm/nanomdm/push"
 	"github.com/micromdm/nanomdm/service"
 	"github.com/micromdm/nanomdm/storage"
 
+	"github.com/micromdm/plist"
 	"github.com/micromdm/nanolib/log"
 	"github.com/micromdm/nanolib/log/ctxlog"
 )
+
+type autoDeviceInformation struct {
+	enqueuer  storage.CommandEnqueuer
+	pusher    push.Pusher
+	infoStore storage.DeviceInfoStore
+}
 
 // Service is the main NanoMDM service which dispatches to storage.
 type Service struct {
@@ -27,19 +38,11 @@ type Service struct {
 
 	// GetToken handler
 	gt service.GetToken
+
+	// Optional: auto-enqueue DeviceInformation after TokenUpdate
+	autoDevInfo *autoDeviceInformation
 }
 
-// normalize generates enrollment IDs that are used by other
-// services and the storage backend. Enrollment IDs need not
-// necessarily be related to the UDID, UserIDs, or other identifiers
-// sent in the request, but by convention that is what this normalizer
-// uses.
-//
-// Device enrollments are identified by the UDID or EnrollmentID. User
-// enrollments are then appended after a colon (":"). Note that the
-// storage backends depend on the ParentID field matching a device
-// enrollment so that the "parent" (device) enrollment can be
-// referenced.
 func normalize(e *mdm.Enrollment) *mdm.EnrollID {
 	r := e.Resolved()
 	if r == nil {
@@ -84,6 +87,16 @@ func WithGetToken(gt service.GetToken) Option {
 	}
 }
 
+func WithAutoDeviceInformation(enqueuer storage.CommandEnqueuer, pusher push.Pusher, infoStore storage.DeviceInfoStore) Option {
+	return func(s *Service) {
+		s.autoDevInfo = &autoDeviceInformation{
+			enqueuer:  enqueuer,
+			pusher:    pusher,
+			infoStore: infoStore,
+		}
+	}
+}
+
 // New returns a new NanoMDM main service.
 func New(store storage.ServiceStore, opts ...Option) *Service {
 	nanomdm := &Service{
@@ -95,6 +108,89 @@ func New(store storage.ServiceStore, opts ...Option) *Service {
 		opt(nanomdm)
 	}
 	return nanomdm
+}
+
+func encodePlist(v interface{}) ([]byte, error) {
+	buf := new(bytes.Buffer)
+	enc := plist.NewEncoder(buf)
+	enc.Indent("\t")
+	if err := enc.Encode(v); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+func randomHex(nBytes int) (string, error) {
+	b := make([]byte, nBytes)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
+}
+
+func (s *Service) maybeEnqueueAutoDeviceInformation(r *mdm.Request) {
+	if s.autoDevInfo == nil || s.autoDevInfo.enqueuer == nil {
+		return
+	}
+	if r.ParentID != "" {
+		return
+	}
+
+	logger := ctxlog.Logger(r.Context(), s.logger).With("component", "auto-device-info")
+
+	if s.autoDevInfo.infoStore != nil {
+		if info, err := s.autoDevInfo.infoStore.RetrieveDeviceInfo(r.Context(), r.ID); err == nil && info != nil && info.LastDeviceQuery != "" {
+			logger.Debug("msg", "skipping auto deviceinformation; already have metadata", "id", r.ID, "last_device_query", info.LastDeviceQuery)
+			return
+		}
+	}
+
+	suffix, err := randomHex(8)
+	if err != nil {
+		logger.Debug("msg", "generating command uuid", "err", err)
+		return
+	}
+	cmdUUID := "auto-device-info-" + suffix
+
+	cmd := &mdm.Command{
+		CommandUUID: cmdUUID,
+		Command: struct{ RequestType string }{
+			RequestType: "DeviceInformation",
+		},
+	}
+	raw, err := encodePlist(cmd)
+	if err != nil {
+		logger.Debug("msg", "encoding deviceinformation plist", "err", err)
+		return
+	}
+	cmd.Raw = raw
+
+	perIDErrs, err := s.autoDevInfo.enqueuer.EnqueueCommand(r.Context(), []string{r.ID}, cmd)
+	if err != nil {
+		logger.Info("msg", "enqueue deviceinformation", "id", r.ID, "command_uuid", cmdUUID, "err", err)
+		return
+	}
+	if perIDErrs != nil {
+		if idErr, ok := perIDErrs[r.ID]; ok && idErr != nil {
+			logger.Info("msg", "enqueue deviceinformation", "id", r.ID, "command_uuid", cmdUUID, "err", idErr)
+			return
+		}
+	}
+
+	logger.Info("msg", "auto-enqueued deviceinformation", "id", r.ID, "command_uuid", cmdUUID)
+
+	// Best-effort push so the device checks in quickly.
+	if s.autoDevInfo.pusher != nil {
+		if res, err := s.autoDevInfo.pusher.Push(r.Context(), []string{r.ID}); err != nil {
+			logger.Info("msg", "auto-push after deviceinformation enqueue", "id", r.ID, "command_uuid", cmdUUID, "err", err)
+		} else if res != nil {
+			if r0, ok := res[r.ID]; ok && r0 != nil && r0.Err != nil {
+				logger.Info("msg", "auto-push after deviceinformation enqueue", "id", r.ID, "command_uuid", cmdUUID, "err", r0.Err)
+			} else {
+				logger.Debug("msg", "auto-push after deviceinformation enqueue", "id", r.ID, "command_uuid", cmdUUID)
+			}
+		}
+	}
 }
 
 func (s *Service) setupRequest(r *mdm.Request, e *mdm.Enrollment) (*mdm.Request, error) {
@@ -146,7 +242,11 @@ func (s *Service) TokenUpdate(r *mdm.Request, message *mdm.TokenUpdate) error {
 		return err
 	}
 	ctxlog.Logger(r.Context(), s.logger).Info("msg", "TokenUpdate")
-	return s.store.StoreTokenUpdate(r, message)
+	if err := s.store.StoreTokenUpdate(r, message); err != nil {
+		return err
+	}
+	s.maybeEnqueueAutoDeviceInformation(r)
+	return nil
 }
 
 // CheckOut Check-in message implementation.
