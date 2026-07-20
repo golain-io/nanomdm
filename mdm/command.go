@@ -69,3 +69,35 @@ func DecodeCommand(rawCommand []byte) (command *Command, err error) {
 	}
 	return
 }
+
+// DefaultDeviceInformationQueries is the default list of keys requested by
+// DeviceInformationCommandWithQueries. iOS may return CommandFormatError when
+// DeviceInformation is sent without a Queries array.
+var DefaultDeviceInformationQueries = []string{
+	"DeviceName", "ModelName", "OSVersion", "SerialNumber", "UDID",
+	"BatteryLevel", "DeviceCapacity", "AvailableDeviceCapacity",
+	"BuildVersion", "ProductName", "IsSupervised",
+}
+
+// DeviceInformationCommandWithQueries returns a DeviceInformation command plist
+// that includes a Queries array, which iOS requires to avoid CommandFormatError.
+// cmdUUID is preserved so the client can track the command.
+func DeviceInformationCommandWithQueries(cmdUUID string) ([]byte, error) {
+	cmd := struct {
+		CommandUUID string
+		Command     struct {
+			RequestType string   `plist:"RequestType"`
+			Queries     []string `plist:"Queries,omitempty"`
+		} `plist:"Command"`
+	}{
+		CommandUUID: cmdUUID,
+		Command: struct {
+			RequestType string   `plist:"RequestType"`
+			Queries     []string `plist:"Queries,omitempty"`
+		}{
+			RequestType: "DeviceInformation",
+			Queries:     DefaultDeviceInformationQueries,
+		},
+	}
+	return plist.Marshal(cmd)
+}

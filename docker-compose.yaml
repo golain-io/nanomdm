@@ -52,7 +52,7 @@ services:
       - "-storage"
       - "pgsql"
       - "-storage-dsn"
-      - "postgres://nanomdm:OWFG6kDT5eSfEi2csaZOlAhE@golain-prod-alpha-db.couz0urd95oe.ap-south-1.rds.amazonaws.com:5432/nanomdm?sslmode=require"
+      - "postgres://nanomdm:AwQ60lrdawlB3oZ@golain-prod-alpha-db-replica.couz0urd95oe.ap-south-1.rds.amazonaws.com:5432/nanomdm?sslmode=require"
       - "-amqps-conn"
       - "amqps://rabbitmq:ef19e2ji@queue:5671/"
       - "-amqps-ca-cert"

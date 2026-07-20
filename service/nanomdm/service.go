@@ -2,7 +2,6 @@
 package nanomdm
 
 import (
-	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
@@ -13,7 +12,6 @@ import (
 	"github.com/micromdm/nanomdm/service"
 	"github.com/micromdm/nanomdm/storage"
 
-	"github.com/micromdm/plist"
 	"github.com/micromdm/nanolib/log"
 	"github.com/micromdm/nanolib/log/ctxlog"
 )
@@ -110,16 +108,6 @@ func New(store storage.ServiceStore, opts ...Option) *Service {
 	return nanomdm
 }
 
-func encodePlist(v interface{}) ([]byte, error) {
-	buf := new(bytes.Buffer)
-	enc := plist.NewEncoder(buf)
-	enc.Indent("\t")
-	if err := enc.Encode(v); err != nil {
-		return nil, err
-	}
-	return buf.Bytes(), nil
-}
-
 func randomHex(nBytes int) (string, error) {
 	b := make([]byte, nBytes)
 	if _, err := rand.Read(b); err != nil {
@@ -152,18 +140,17 @@ func (s *Service) maybeEnqueueAutoDeviceInformation(r *mdm.Request) {
 	}
 	cmdUUID := "auto-device-info-" + suffix
 
-	cmd := &mdm.Command{
-		CommandUUID: cmdUUID,
-		Command: struct{ RequestType string }{
-			RequestType: "DeviceInformation",
-		},
-	}
-	raw, err := encodePlist(cmd)
+	// iOS requires DeviceInformation to include a Queries array; omitting it can cause CommandFormatError.
+	raw, err := mdm.DeviceInformationCommandWithQueries(cmdUUID)
 	if err != nil {
 		logger.Debug("msg", "encoding deviceinformation plist", "err", err)
 		return
 	}
-	cmd.Raw = raw
+	cmd := &mdm.Command{
+		CommandUUID: cmdUUID,
+		Command:     struct{ RequestType string }{RequestType: "DeviceInformation"},
+		Raw:         raw,
+	}
 
 	perIDErrs, err := s.autoDevInfo.enqueuer.EnqueueCommand(r.Context(), []string{r.ID}, cmd)
 	if err != nil {

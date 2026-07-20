@@ -129,12 +129,19 @@ func code(r *APIResult, idCount int) int {
 
 // RawCommandEnqueueWithPush enqueues rawCommand and can send APNs pushes to ids.
 // See [EnqueueWithPush] for calling semantics.
+// DeviceInformation commands are normalized to include a Queries array so iOS does not return CommandFormatError.
 func (pe *PushEnqueuer) RawCommandEnqueueWithPush(ctx context.Context, rawCommand []byte, ids []string, noPush bool) (*APIResult, int, error) {
 	var command *mdm.Command
 	if len(rawCommand) > 0 {
 		var err error
 		if command, err = mdm.DecodeCommand(rawCommand); err != nil {
 			return nil, 500, fmt.Errorf("decoding command: %w", err)
+		}
+		// Normalize DeviceInformation to include Queries so iOS accepts it.
+		if command != nil && command.Command.RequestType == "DeviceInformation" {
+			if normalized, err := mdm.DeviceInformationCommandWithQueries(command.CommandUUID); err == nil {
+				command.Raw = normalized
+			}
 		}
 	}
 	return pe.EnqueueWithPush(ctx, command, ids, noPush)
