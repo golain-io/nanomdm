@@ -47,12 +47,12 @@ services:
       - "-ca"
       - "/app/ca.pem"
       - "-api"
-      - "QdYgcU2n0dsXN55Yt53gZnUe"
+      - "API key"
       - "-debug"
       - "-storage"
       - "pgsql"
       - "-storage-dsn"
-      - "postgres://nanomdm:AwQ60lrdawlB3oZ@golain-prod-alpha-db-replica.couz0urd95oe.ap-south-1.rds.amazonaws.com:5432/nanomdm?sslmode=require"
+      - "postgres://nanomdm:<password>@<host>:5432/nanomdm?sslmode=require"
       - "-amqps-conn"
       - "amqps://rabbitmq:ef19e2ji@queue:5671/"
       - "-amqps-ca-cert"
@@ -69,33 +69,6 @@ services:
       - "traefik.http.routers.nanomdm.tls=true"
       - "traefik.http.routers.nanomdm.tls.certresolver=le"
       - "traefik.http.services.nanomdm.loadbalancer.server.port=9000"
-
-  dep-broker:
-    build:
-      context: .
-      dockerfile: Dockerfile.dep-broker
-    container_name: dep-broker
-    environment:
-      - DEP_BROKER_LISTEN=:9010
-      - DEP_BROKER_STORAGE=/app/dep_broker_data
-    volumes:
-      - ./dep_broker_data:/app/dep_broker_data
-    networks:
-      - nanomdm
-      - proxy
-    restart: unless-stopped
-    command: []
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.depbroker.rule=Host(`dep.mdm.golain.io`)"
-      - "traefik.http.routers.depbroker.entrypoints=websecure"
-      - "traefik.http.routers.depbroker.tls=true"
-      - "traefik.http.routers.depbroker.tls.certresolver=le"
-      - "traefik.http.services.depbroker.loadbalancer.server.port=9010"
-
-volumes:
-  postgres_nanomdm_data:
-    driver: local
 
 networks:
   nanomdm:
