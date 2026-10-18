@@ -85,12 +85,39 @@ func main() {
 		flAMQPScaCert     = flag.String("amqps-ca-cert", "", "path to PEM CA cert for AMQPS connection")
 		flAMQPSclientCert = flag.String("amqps-client-cert", "", "path to PEM client cert for AMQPS connection")
 		flAMQPSclientKey  = flag.String("amqps-client-key", "", "path to PEM client key for AMQPS connection")
+
+		flAPIKeyFile    = flag.String("api-file", "", "path to file containing the API key; default from "+envAPIKeyFile)
+		flDSNFile       = flag.String("storage-dsn-file", "", "path to file containing the storage DSN; default from "+envStorageDSNFile)
+		flWebhookFile   = flag.String("webhook-url-file", "", "path to file containing the webhook URL; default from "+envWebhookURLFile)
+		flAMQPSConnFile = flag.String("amqps-conn-file", "", "path to file containing the AMQPS connection string; default from "+envAMQPSConnFile)
 	)
 	flag.Parse()
 
 	if *flVersion {
 		fmt.Println(version)
 		return
+	}
+
+	// resolve secrets that may be supplied via files instead of flags
+	var err error
+	if *flAPIKey, err = resolveSecret("api", *flAPIKey, *flAPIKey != "", *flAPIKeyFile, os.Getenv(envAPIKeyFile), false); err != nil {
+		stdlog.Fatal(err)
+	}
+	if *flWebhook, err = resolveSecret("webhook-url", *flWebhook, *flWebhook != "", *flWebhookFile, os.Getenv(envWebhookURLFile), true); err != nil {
+		stdlog.Fatal(err)
+	}
+	if *flAMQPSConn, err = resolveSecret("amqps-conn", *flAMQPSConn, *flAMQPSConn != "", *flAMQPSConnFile, os.Getenv(envAMQPSConnFile), true); err != nil {
+		stdlog.Fatal(err)
+	}
+	dsnSet := len(cliStorage.DSN) > 0
+	dsnFromFile, err := resolveSecret("storage-dsn", "", dsnSet, *flDSNFile, os.Getenv(envStorageDSNFile), false)
+	if err != nil {
+		stdlog.Fatal(err)
+	}
+	if !dsnSet && dsnFromFile != "" {
+		if err := cliStorage.DSN.Set(dsnFromFile); err != nil {
+			stdlog.Fatal(err)
+		}
 	}
 
 	if *flDisableMDM && *flAPIKey == "" {
