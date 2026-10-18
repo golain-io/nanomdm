@@ -205,6 +205,14 @@ Print version and exit.
 
 NanoMDM supports a MicroMDM-compatible [webhook callback](https://github.com/micromdm/micromdm/blob/main/docs/user-guide/api-and-webhooks.md) option. This switch turns on the webhook and specifies the URL.
 
+### Secrets from files
+
+* `-api-file`, `-storage-dsn-file`, `-webhook-url-file`, `-amqps-conn-file` (paths)
+
+These switches read the value of `-api`, `-storage-dsn`, `-webhook-url` and `-amqps-conn` respectively from a file, so the value does not appear in the process arguments. Leading and trailing whitespace (including a trailing newline) is trimmed. The environment variables `NANOMDM_API_KEY_FILE`, `NANOMDM_STORAGE_DSN_FILE`, `NANOMDM_WEBHOOK_URL_FILE` and `NANOMDM_AMQPS_CONN_FILE` provide default file paths, which allows configuration purely through the environment and mounted files.
+
+Precedence is: explicit value switch, then file switch, then environment variable. Supplying both a value switch and its file switch is an error. An unreadable file is a fatal error. An empty file is an error for `-api` and `-storage-dsn`, and is treated as unset for `-webhook-url` and `-amqps-conn`. `-storage-dsn-file` applies only when no `-storage-dsn`/`-dsn` switch is given and supplies a single DSN.
+
 ### -auth-proxy-url string
 
 * Reverse proxy URL target for MDM-authenticated HTTP requests
